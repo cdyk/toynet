@@ -58,26 +58,62 @@ class NeuralNet:
         # G(E;o_3) J(o_3;s_2) = ( dE;do_3_1 do_3_1;ds_2_1 ... dE;do_3_n3 do_3_1;ds_2_n3)
         #                     = ( (o_3_1 - t_1) phi'(s_2_1) ... (o_3_n3 - t_n3)*phi'(s_2_n3) )
         #                     = ( (o_3_1 - t_1) o_3_1 (1 - o_3_1) ... (o_3_n3 - t_n3) o_3_n3 (1 - o_3_n3) )
-        #                     = sigma_3  1 x n3 matrix
+        #                     = sigma_2  1 x n3 matrix
        
         sigma[1] = (outs[2]-target)*outs[2]*(1-outs[2])
 
         # J(s_2;w_ij) = n3 x n2 matrix element w_ij nonzero
-        # -> sigma_3 J(s_2;w_ij) = ( 0 ... sigma_3_j o_2_i ... 0)
+        # -> sigma_2 J(s_2;w_ij) = ( 0 ... sigma_3_j o_2_i ... 0)
         #
         #          +-                                         -+
         #          | sigma_3_1 o_2_1   ...   sigma_3_n3 o_2_1  |
         # delta =  |      ..                        ..         |
         #          | sigma_3_1 o_2_n2  ...   sigma_3_n3 o_2_n2 |
         #          +-                                         -+
-
         delta[1] = np.outer(sigma[1], outs[1])
+
+        # calculate sigma 1 from sigma 2,
+        # dE;dw_ij = G(e;o_3) J(o_3;w_ij)
+        #          = G(e;o_3) J(o_3;s_2) J(s_2;w_ij)
+        #          = G(e;o_3) J(o_3;s_2) J(s_2;o_2) J(o_2;w_ij)
+        #          = G(e;o_3) J(o_3;s_2) J(s_2;o_2) J(o_2;s_1) J(s_1;w_ij)
+        #           +---- sigma_2 -----+
+        #           +----------- sigma_1 --------------------+
+        # sigma_1 = sigma_2 J(s_2;o_2) J(o_2;s_1)
+        #
+        # 
+
+        #   dE;dw_ij = G(e;o_3) J(o_3;s_2) J(s_2;o_2) J(o_2;s_1) J(s_1;w_ij)    <- use if w_ij in s_1
+        #             = sigma_2 J(s_2;o_2) J(o_2;s_1) J(s_1;w_ij)
+        #              +------- sigma_1 -------------+
+        #    sigma_1 = sigma_2 J(s_2;o_2) J(o_2;s_1)
+        #
+        #
+        #                 +-                                -+
+        #                 | ds_2_1;do_2_1 ... ds_2_1;do_2_n2 |   s_2_i = < ( w_i1 ... w_im), (o_2_1, ... o_2_m) >
+        #    J(s_2;o_2) = |      ...               ...       |
+        #                 | ds_2_m;do_2_1 ... ds_2_m;do_2_n2 |   ds_2_i;do_2_j = w_ij 
+        #                 +-                                -+
+        #                 +-              -+
+        #                 | w_11  ... w_1m |
+        #               = | ...       ...  | = W
+        #                 | w_n1  ... w_nm |
+        #                 +-              -+
+        #
+        #    J(o_2;s_1) = I( o_2_1;s_1_1 ... o_2_)
+
+        sigma[0] = np.matmul(sigma[1], self.weights[1])*outs[1]*(1-outs[1])
+        delta[0] = np.outer(sigma[0], outs[0])
+
+
 
         a = self.evaluate(input)-target         # before any adjustment
         self.weights[1] -= 0.1*delta[1]
         b = self.evaluate(input)-target         # after adjustment of last layer
+        self.weights[0] -= 0.1*delta[0]
+        c = self.evaluate(input)-target         # after adjustment of last layer
 
-        print("%f -> %f" % (np.sum(a*a), np.sum(b*b)))
+        print("%f -> %f -> %f" % (np.sum(a*a), np.sum(b*b), np.sum(c*c)))
 
 
 
@@ -92,7 +128,7 @@ with open("mnist_train.csv") as f:
         train.append((e[0],
                      (0.99/258.0)*np.asfarray(e[1:]) + 0.01,
                      np.asfarray([0.99 if x==e[0] else 0.01 for x in range(0,10)])))
-        if 10 < len(train):
+        if 100 < len(train):
             break
 
         net.train(train[-1][1], train[-1][2])
