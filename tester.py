@@ -107,13 +107,13 @@ class NeuralNet:
 
 
 
-        a = self.evaluate(input)-target         # before any adjustment
+        #a = self.evaluate(input)-target         # before any adjustment
         self.weights[1] -= 0.1*delta[1]
-        b = self.evaluate(input)-target         # after adjustment of last layer
+        #b = self.evaluate(input)-target         # after adjustment of last layer
         self.weights[0] -= 0.1*delta[0]
-        c = self.evaluate(input)-target         # after adjustment of last layer
+        #c = self.evaluate(input)-target         # after adjustment of last layer
 
-        print("%f -> %f -> %f" % (np.sum(a*a), np.sum(b*b), np.sum(c*c)))
+        #print("%f -> %f -> %f" % (np.sum(a*a), np.sum(b*b), np.sum(c*c)))
 
 
 
@@ -125,13 +125,18 @@ train=[]
 with open("mnist_train.csv") as f:
     for l in f.readlines():
         e = l.split(',')
-        train.append((e[0],
+        train.append((int(e[0]),
                      (0.99/258.0)*np.asfarray(e[1:]) + 0.01,
-                     np.asfarray([0.99 if x==e[0] else 0.01 for x in range(0,10)])))
-        if 100 < len(train):
+                     np.asfarray([0.99 if x==int(e[0]) else 0.01 for x in range(0,10)])))
+        if 1000 < len(train):
             break
 
-        net.train(train[-1][1], train[-1][2])
+#for i in range(0,1000):
+#    net.train(train[0][1], train[0][2])
+
+for i in range(0,10):
+    for line in train:
+        net.train(line[1], line[2])
 
 correct = 0
 
@@ -145,19 +150,20 @@ with open("mnist_test.csv") as f:
         if 10 < len(test):
             break
 
-        x = net.evaluate(test[-1][1])
+for line in test:
+    x = net.evaluate(line[1])
 
-        i = np.argmax(x)
+    i = np.argmax(x)
 
-        if(i ==  test[-1][0]):
-            correct = correct+1
+    if(i == line[0]):
+        correct = correct+1
 
-        r = x - test[-1][2]
-        
-        print("error=%f %d %d" % (np.sum(0.5*r*r), i, test[-1][0]))
-        print("f=%s" % ["%.2f" % z for z in x])
-        print("t=%s" % ["%.2f" % z for z in test[-1][2]])
-        print("e=%s" % ["%.2f" % z for z in r])
+    r = x - line[2]
+    
+    print("error=%f %d %d" % (np.sum(0.5*r*r), i, line[0]))
+    print("f=%s" % ["%.2f" % z for z in x])
+    print("t=%s" % ["%.2f" % z for z in line[2]])
+    print("e=%s" % ["%.2f" % z for z in r])
 
 print("correct=%d/%d" % (correct, len(test)))
 
