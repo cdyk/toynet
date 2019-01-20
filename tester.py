@@ -1,5 +1,6 @@
 # data https://pjreddie.com/projects/mnist-in-csv/
 
+import math
 import numpy as np
 import scipy.special
 import matplotlib.pyplot as plt
@@ -14,8 +15,11 @@ class NeuralNet:
         for i in range(0, len(self.nodecounts)-1):
             cols = self.nodecounts[i]+1
             rows = self.nodecounts[i+1]
-            self.weights[i] = 0.01*np.random.rand(rows, cols) + 0.01
-            print("weights %d %d" % (rows, cols))
+            self.weights[i] = (1.0/math.sqrt(cols*rows))*(0.98*np.random.rand(rows, cols) + 0.01)
+
+            rowsums = np.sum(self.weights[i], axis=1)
+
+            print("weights %d %d rowsum avg=%s" % (rows, cols, np.average(rowsums)))
 
     def evaluate(self, input):
         assert len(input) == self.nodecounts[0]
@@ -28,6 +32,8 @@ class NeuralNet:
     def train(self, input, target):
         assert len(input) == self.nodecounts[0]
         assert len(target) == self.nodecounts[-1]
+
+        return
 
         # phi is logistic func 1/(1+exp(-x))
         # phi'(x) = phi(x)(1-phi(x))
@@ -79,8 +85,8 @@ class NeuralNet:
         out = nodes[-2][1]
         sigma[-2] = psi * out * (1 - out)
 
-        self.weights[-1] -= 0.1 * np.outer(sigma[-1], np.append(nodes[-2][1],1))
-        self.weights[-2] -= 0.1 * np.outer(sigma[-2], np.append(nodes[-3][1],1))
+        #self.weights[-1] -= 0.1 * np.outer(sigma[-1], np.append(nodes[-2][1],1))
+        #self.weights[-2] -= 0.1 * np.outer(sigma[-2], np.append(nodes[-3][1],1))
 
 
 net = NeuralNet([784, 100, 10])
@@ -94,7 +100,7 @@ with open("mnist_train.csv") as f:
         train.append((e[0],
                      (0.99/258.0)*np.asfarray(e[1:]) + 0.01,
                      np.asfarray([0.99 if x==e[0] else 0.01 for x in range(0,10)])))
-        if 10000 < len(train):
+        if 1000 < len(train):
             break
 
         net.train(train[-1][1], train[-1][2])
@@ -121,8 +127,9 @@ with open("mnist_test.csv") as f:
         r = x - test[-1][2]
         
         print("error=%f %d %d" % (np.sum(0.5*r*r), i, test[-1][0]))
-        #print(x)
-        #print(r)
+        print("f=%s" % ["%.2f" % z for z in x])
+        print("t=%s" % ["%.2f" % z for z in test[-1][2]])
+        print("e=%s" % ["%.2f" % z for z in r])
 
 print("correct=%d/%d" % (correct, len(test)))
 
