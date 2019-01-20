@@ -4,7 +4,7 @@ This is my neural net playground, where I try to build some neural nets complete
 
 ## Simple feed-forward network on MNIST handwritten digits
 
-Implementation in `tester.py`
+Implementation in `mnist_handwriting_net.py`
 
 Notation:
 ```
