@@ -13,7 +13,7 @@ class NeuralNet:
         self.weights = [None]*(len(self.nodecounts)-1)
 
         for i in range(0, len(self.nodecounts)-1):
-            cols = self.nodecounts[i]+1
+            cols = self.nodecounts[i]
             rows = self.nodecounts[i+1]
             self.weights[i] = (1.0/math.sqrt(cols*rows))*(0.98*np.random.rand(rows, cols) + 0.01)
 
@@ -25,7 +25,7 @@ class NeuralNet:
         assert len(input) == self.nodecounts[0]
         x = input
         for weight in self.weights:
-            x = weight.dot(np.append(x,1))  # append 1 for bias
+            x = weight.dot(x)
             x = scipy.special.expit(x)      # expit is logistic func 1/(1+exp(-x))
         return x
 
@@ -33,60 +33,52 @@ class NeuralNet:
         assert len(input) == self.nodecounts[0]
         assert len(target) == self.nodecounts[-1]
 
-        return
-
-        # phi is logistic func 1/(1+exp(-x))
-        # phi'(x) = phi(x)(1-phi(x))
-
-
-        # out_j = phi( sum_k(w_kj * in_k) )
-        #
-        # net_j = sum_k w_kj in_k
-        #
-        # E_j = 0.5(t-out_j)^2
-        #
-        # dE/dw_ij = dE/dout_j * dout_j/dw_ij
-        #          = dE/dout_j * phi'( net_j ) * d(net_j)/dw_ij
-        #          = dE/dout_j * phi'( net_j ) * in_i
-
-        # If out_j in last layer,
-        #
-        # dE/dout_j = (t-out_j)
-
-        # nodes[k][0] - sum of net at k
-        # nodes[k][1] - output of activation function at k
-        nodes = [(None,np.asfarray(input))]
-        for weight in self.weights:
-            sum = weight.dot(np.append(nodes[-1][1],1)) 
-            out = scipy.special.expit(sum)
-            nodes.append((sum,out))
-
-
-        # partial derivatives up to and including that functions activation func but before net sum
+        nets = []
+        outs = [input]
         sigma = [None]*len(self.weights)
+        delta = [None]*len(self.weights)
 
-        # output layer
-        out = nodes[-1][1]
-        sigma[-1] = (out - target) * out * (1 - out)
+        for weight in self.weights:
+            nets.append(weight.dot(outs[-1]))
+            outs.append(scipy.special.expit(nets[-1]))      # expit is logistic func 1/(1+exp(-x))
 
-        # Last inner layer
+        # Last layer:
         #
-        # If out_j is in inner layer, let net_l be the nodes
-        # receinving input from out_j,
+        #     dE;dw_ij = G(e;o_3) J(o_3;w_ij)
+        #              = G(e;o_3) J(o_3;s_2) J(s_2;w_ij)
+        #               +---- sigma --------+
         #
-        # dE/dout_j = sum_l dE/dnet_l * dnet_l/dout_j
-        #           = sum_l dE/dout_l * dout_l/dnet_l * dnet_l/dout_j
-        #           = sum_l dE/dout_l * dout_l/dnet_l * w_jl
+        #     G(E;o_3) = ( E;o_3_1 ... E;o_3_n3 )
+        #              = ( -(t_1 - o_3_1) .. -(t_m - o_3_n3) )    // 1 x n3 matrix
+        #     J(o_3;s_2) = I(o_3_1;s_2_1 ... o_3_1;s_2_n3)
+        #
 
-        # transform input of last activation func to input of last sum (at output of prev layer)
-        psi = ((np.transpose(self.weights[-1]).dot(sigma[-1]))[:-1])
+        # Calculate sigma for last layer
+        #
+        # G(E;o_3) J(o_3;s_2) = ( dE;do_3_1 do_3_1;ds_2_1 ... dE;do_3_n3 do_3_1;ds_2_n3)
+        #                     = ( (o_3_1 - t_1) phi'(s_2_1) ... (o_3_n3 - t_n3)*phi'(s_2_n3) )
+        #                     = ( (o_3_1 - t_1) o_3_1 (1 - o_3_1) ... (o_3_n3 - t_n3) o_3_n3 (1 - o_3_n3) )
+        #                     = sigma_3  1 x n3 matrix
+       
+        sigma[1] = (outs[2]-target)*outs[2]*(1-outs[2])
 
-        # move through activation function of next to last layer
-        out = nodes[-2][1]
-        sigma[-2] = psi * out * (1 - out)
+        # J(s_2;w_ij) = n3 x n2 matrix element w_ij nonzero
+        # -> sigma_3 J(s_2;w_ij) = ( 0 ... sigma_3_j o_2_i ... 0)
+        #
+        #          +-                                         -+
+        #          | sigma_3_1 o_2_1   ...   sigma_3_n3 o_2_1  |
+        # delta =  |      ..                        ..         |
+        #          | sigma_3_1 o_2_n2  ...   sigma_3_n3 o_2_n2 |
+        #          +-                                         -+
 
-        #self.weights[-1] -= 0.1 * np.outer(sigma[-1], np.append(nodes[-2][1],1))
-        #self.weights[-2] -= 0.1 * np.outer(sigma[-2], np.append(nodes[-3][1],1))
+        delta[1] = np.outer(sigma[1], outs[1])
+
+        a = self.evaluate(input)-target         # before any adjustment
+        self.weights[1] -= 0.1*delta[1]
+        b = self.evaluate(input)-target         # after adjustment of last layer
+
+        print("%f -> %f" % (np.sum(a*a), np.sum(b*b)))
+
 
 
 net = NeuralNet([784, 100, 10])
@@ -100,7 +92,7 @@ with open("mnist_train.csv") as f:
         train.append((e[0],
                      (0.99/258.0)*np.asfarray(e[1:]) + 0.01,
                      np.asfarray([0.99 if x==e[0] else 0.01 for x in range(0,10)])))
-        if 1000 < len(train):
+        if 10 < len(train):
             break
 
         net.train(train[-1][1], train[-1][2])
