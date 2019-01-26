@@ -89,20 +89,35 @@ class NeuralNet:
             self._parameters[0],
             self._parameters[2]
         ]
-        nets = []
-        outs = [input]
-        sigma = [None]*len(weights)
-        delta = [None]*len(weights)
-        for weight in weights:
-            nets.append(weight.dot(outs[-1]))
-            outs.append(scipy.special.expit(nets[-1]))      # expit is logistic func 1/(1+exp(-x))
-        sigma[1] = (outs[2]-target)*outs[2]*(1-outs[2])
-        delta[1] = np.outer(sigma[1], outs[1])
-        sigma[0] = np.matmul(sigma[1], weights[1])*outs[1]*(1-outs[1])
-        delta[0] = np.outer(sigma[0], outs[0])
+        outs = [None]*5
+        sigma = [None]*5
+        delta = [None]*5
+
+        outs[0] = input
+        outs[1] = weights[0].dot(outs[0])
+        outs[2] = scipy.special.expit(outs[1])      # expit is logistic func 1/(1+exp(-x))
+        outs[3] = weights[1].dot(outs[2])
+        outs[4] = scipy.special.expit(outs[3])      # expit is logistic func 1/(1+exp(-x))
+
+        # layer 4: error
+        sigma[4] = (outs[4]-target)
+
+        # layer 3: activation
+        sigma[3] = sigma[4]*outs[4]*(1-outs[4])
+
+        # layer 2: sum
+        delta[2] = np.outer(sigma[3], outs[2])
+        sigma[2] = np.matmul(sigma[3], weights[1])
+
+        # layer 1: activation
+        sigma[1] = sigma[2]*outs[2]*(1-outs[2])
+
+        # layer 0: sum
+        delta[0] = np.outer(sigma[1], outs[0])
+        sigma[0] = np.matmul(sigma[1], weights[0])  # unused
 
         #a = self.evaluate(input)-target         # before any adjustment
-        weights[1] -= 0.1*delta[1]
+        weights[1] -= 0.1*delta[2]
         #b = self.evaluate(input)-target         # after adjustment of last layer
         weights[0] -= 0.1*delta[0]
         #c = self.evaluate(input)-target         # after adjustment of last layer
