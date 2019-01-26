@@ -119,36 +119,31 @@ class NeuralNet:
 
 net = NeuralNet([784, 100, 10])
 
+def readdata(path, maxRows):
+    rv = []
+    print("Reading %s..." % path)
+    with open(path) as f:
+        reader = csv.reader(f)
+        for row in reader:
+            rv.append((int(row[0]),
+                      (0.99/258.0)*np.asfarray(row[1:]) + 0.01,
+                      np.asfarray([0.99 if x==int(row[0]) else 0.01 for x in range(0,10)])))
+            if maxRows < len(rv):
+                break
+    print("...done")
+    return rv
 
 
-train=[]
-with open("mnist_train.csv") as f:
-    for l in f.readlines():
-        e = l.split(',')
-        train.append((int(e[0]),
-                     (0.99/258.0)*np.asfarray(e[1:]) + 0.01,
-                     np.asfarray([0.99 if x==int(e[0]) else 0.01 for x in range(0,10)])))
-        if 1000 < len(train):
-            break
-
-#for i in range(0,1000):
-#    net.train(train[0][1], train[0][2])
+train = readdata("mnist_train.csv", 1000)
 
 for i in range(0,10):
+    print("Epoch %d" % i)
     for line in train:
         net.train(line[1], line[2])
 
 correct = 0
 
-test=[]
-with open("mnist_test.csv") as f:
-    for l in f.readlines():
-        e = l.split(',')
-        test.append((int(e[0]),
-                     (0.99/258.0)*np.asfarray(e[1:]) + 0.01,
-                     np.asfarray([0.99 if x==int(e[0]) else 0.01 for x in range(0,10)])))
-        if 10 < len(test):
-            break
+test = readdata("mnist_test.csv",10)
 
 for line in test:
     x = net.evaluate(line[1])
@@ -160,10 +155,10 @@ for line in test:
 
     r = x - line[2]
     
-    print("error=%f %d %d" % (np.sum(0.5*r*r), i, line[0]))
-    print("f=%s" % ["%.2f" % z for z in x])
-    print("t=%s" % ["%.2f" % z for z in line[2]])
-    print("e=%s" % ["%.2f" % z for z in r])
+    #print("error=%f %d %d" % (np.sum(0.5*r*r), i, line[0]))
+    #print("f=%s" % ["%.2f" % z for z in x])
+    #print("t=%s" % ["%.2f" % z for z in line[2]])
+    #print("e=%s" % ["%.2f" % z for z in r])
 
 print("correct=%d/%d" % (correct, len(test)))
 
