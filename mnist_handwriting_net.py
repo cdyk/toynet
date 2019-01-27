@@ -37,6 +37,16 @@ class LogisticFunc:
     def initialParameter(self):
         return None
 
+class SquaredL2ErrorMeasure:
+    def __init__(self, inputs: int):
+        self._inputs = inputs
+
+    def forward(self, input, target):
+        r = input - target
+        return np.sum(r*r)
+    
+    def backward(self, input, target):
+        return 2*(input - target)
 
 class NeuralNet:
 
@@ -44,6 +54,7 @@ class NeuralNet:
         self.nodecounts = nodecounts
 
         self._layers = []
+        self._errorMeasure = SquaredL2ErrorMeasure(nodecounts[-1])
         for i in range(0, len(self.nodecounts)-1):
             inputs = self.nodecounts[i]
             outputs = self.nodecounts[i+1]
@@ -53,14 +64,16 @@ class NeuralNet:
         self._parameters = [layer.initialParameter() for layer in self._layers]
 
 
-    def evaluate(self, input):
+    def evaluate(self, input, target=None):
         assert len(input) == self.nodecounts[0]
 
         x = input
         for (layer, parameter) in zip(self._layers, self._parameters):
             x = layer.forward(parameter, x)
-
-        return x
+        if target is None:
+            return x
+        else:
+            return (x, self._errorMeasure.forward(x, target))
 
 
     def train(self, input, target):
@@ -75,7 +88,8 @@ class NeuralNet:
 
         # Back propagate the gradient chain
         grads = [None]*len(self._layers)
-        chain = (values[-1] - target)
+        chain = self._errorMeasure.backward(input=values[-1],
+                                            target=target)
         for i in range(len(self._layers)-1,-1,-1):
             (chain, grads[i]) = self._layers[i].backward(parameter=self._parameters[i],
                                                             chain=chain,
@@ -118,7 +132,7 @@ correct = 0
 test = readdata("mnist_test.csv",10)
 
 for line in test:
-    x = net.evaluate(line[1])
+    (x,e) = net.evaluate(line[1],line[2])
 
     i = np.argmax(x)
 
@@ -127,7 +141,7 @@ for line in test:
 
     r = x - line[2]
     
-    #print("error=%f %d %d" % (np.sum(0.5*r*r), i, line[0]))
+    print("error=%f %d %d" % (e, i, line[0]))
     #print("f=%s" % ["%.2f" % z for z in x])
     #print("t=%s" % ["%.2f" % z for z in line[2]])
     #print("e=%s" % ["%.2f" % z for z in r])
