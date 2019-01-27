@@ -14,10 +14,10 @@ class DenseSum:
     def forward(self, parameter, input):
         return parameter.dot(input)
 
-    def backward(self, parameter, sigma, output):
-        sigma = np.matmul(sigma, parameter)
-        delta = np.outer(sigma, output)
-        return (sigma, delta)
+    def backward(self, parameter, chain, output, input):
+        grad = np.outer(chain, input)
+        chain = np.matmul(chain, parameter)
+        return (chain, grad)
 
     def initialParameter(self):
         return (1.0/math.sqrt(self._outputs*self._inputs))*(0.98*np.random.rand(self._outputs, self._inputs) + 0.01)
@@ -29,10 +29,10 @@ class LogisticFunc:
     def forward(self, parameter, input):
         return scipy.special.expit(input)
 
-    def backward(self, parameter, sigma, output):
-        sigma = output*(1-output)
-        delta = None
-        return (sigma, delta)
+    def backward(self, parameter, chain, output, input):
+        grad = None
+        chain = chain*output*(1-output)
+        return (chain, grad)
     
     def initialParameter(self):
         return None
@@ -117,29 +117,34 @@ class NeuralNet:
         sigma[0] = np.matmul(sigma[1], weights[0])  # unused
 
         #a = self.evaluate(input)-target         # before any adjustment
-        weights[1] -= 0.1*delta[2]
+        #weights[1] -= 0.1*delta[2]
         #b = self.evaluate(input)-target         # after adjustment of last layer
-        weights[0] -= 0.1*delta[0]
+        #weights[0] -= 0.1*delta[0]
         #c = self.evaluate(input)-target         # after adjustment of last layer
         #print("%f -> %f -> %f" % (np.sum(a*a), np.sum(b*b), np.sum(c*c)))
 
         if True:
-            x = input
-            forw = []
-            for (layer, parameter) in zip(self._layers, self._parameters):
-                x = layer.forward(parameter, x)
-                forw.append((x, layer, parameter))
 
-            grads = []
-            sigma = (forw[-1][0] - target)
-            for (output, layer, parameter) in reversed(forw):
-                (sigma, delta) = layer.backward(parameter, sigma, output)
-                grads.insert(0,delta)
+            # Forward propagation to get evaluated values in the net
+            values = [input] + [None]*len(self._layers)
+            for i in range(0,len(self._layers)):
+                values[i+1] = self._layers[i].forward(parameter=self._parameters[i],
+                                                      input=values[i])
 
+            # Back propagate the gradient chain
+            grads = [None]*len(self._layers)
+            chain = (values[-1] - target)
+            for i in range(len(self._layers)-1,-1,-1):
+                (chain, grads[i]) = self._layers[i].backward(parameter=self._parameters[i],
+                                                             chain=chain,
+                                                             output=values[i+1],
+                                                             input=values[i])
+
+            # Gradient step
             assert(len(grads) == len(self._parameters))
-    #        for (grad, param) in zip(grads, self._parameters):
-    #            if param is not None:
-    #                param -= 0.1*grad
+            for (parameter, grad) in zip(self._parameters, grads):
+                if parameter is not None:
+                    parameter -= 0.1*grad
 
 
 net = NeuralNet([784, 100, 10])
