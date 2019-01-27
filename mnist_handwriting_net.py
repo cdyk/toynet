@@ -1,52 +1,14 @@
 # data https://pjreddie.com/projects/mnist-in-csv/
 
+import layers
+import measures
+
 import math
 import numpy as np
-import scipy.special
 import matplotlib.pyplot as plt
 import csv
 
-class DenseSum:
-    def __init__(self, outputs: int, inputs: int):
-        self._outputs = outputs
-        self._inputs = inputs
 
-    def forward(self, parameter, input):
-        return parameter.dot(input)
-
-    def backward(self, parameter, chain, output, input):
-        grad = np.outer(chain, input)
-        chain = np.matmul(chain, parameter)
-        return (chain, grad)
-
-    def initialParameter(self):
-        return (1.0/math.sqrt(self._outputs*self._inputs))*(0.98*np.random.rand(self._outputs, self._inputs) + 0.01)
-
-class LogisticFunc:
-    def __init__(self, outputs: int):
-        self._outputs = outputs
-    
-    def forward(self, parameter, input):
-        return scipy.special.expit(input)
-
-    def backward(self, parameter, chain, output, input):
-        grad = None
-        chain = chain*output*(1-output)
-        return (chain, grad)
-    
-    def initialParameter(self):
-        return None
-
-class SquaredL2ErrorMeasure:
-    def __init__(self, inputs: int):
-        self._inputs = inputs
-
-    def forward(self, input, target):
-        r = input - target
-        return np.sum(r*r)
-    
-    def backward(self, input, target):
-        return 2*(input - target)
 
 class NeuralNet:
 
@@ -54,12 +16,12 @@ class NeuralNet:
         self.nodecounts = nodecounts
 
         self._layers = []
-        self._errorMeasure = SquaredL2ErrorMeasure(nodecounts[-1])
+        self._errorMeasure = measures.SquaredL2ErrorMeasure(nodecounts[-1])
         for i in range(0, len(self.nodecounts)-1):
             inputs = self.nodecounts[i]
             outputs = self.nodecounts[i+1]
-            self._layers.append(DenseSum(outputs, inputs))
-            self._layers.append(LogisticFunc(outputs))
+            self._layers.append(layers.DenseSum(outputs, inputs))
+            self._layers.append(layers.LogisticFunc(outputs))
 
         self._parameters = [layer.initialParameter() for layer in self._layers]
 
