@@ -42,7 +42,6 @@ class NeuralNet:
 
     def __init__(self, nodecounts):
         self.nodecounts = nodecounts
-        self.weights = [None]*(len(self.nodecounts)-1)
 
         self._layers = []
         for i in range(0, len(self.nodecounts)-1):
@@ -50,101 +49,44 @@ class NeuralNet:
             outputs = self.nodecounts[i+1]
             self._layers.append(DenseSum(outputs, inputs))
             self._layers.append(LogisticFunc(outputs))
+
         self._parameters = [layer.initialParameter() for layer in self._layers]
 
-        for i in range(0, len(self.nodecounts)-1):
-            cols = self.nodecounts[i]
-            rows = self.nodecounts[i+1]
-            self.weights[i] = (1.0/math.sqrt(cols*rows))*(0.98*np.random.rand(rows, cols) + 0.01)
-
-            rowsums = np.sum(self.weights[i], axis=1)
-
-            print("weights %d %d rowsum avg=%s" % (rows, cols, np.average(rowsums)))
 
     def evaluate(self, input):
         assert len(input) == self.nodecounts[0]
-        if False:
-            weights = [
-                self._parameters[0],
-                self._parameters[2]
-            ]
-            x = input
-            for weight in weights:
-                x = weight.dot(x)
-                x = scipy.special.expit(x)      # expit is logistic func 1/(1+exp(-x))
 
-        if True:
-            x = input
-            for (layer, parameter) in zip(self._layers, self._parameters):
-                x = layer.forward(parameter, x)
-
+        x = input
+        for (layer, parameter) in zip(self._layers, self._parameters):
+            x = layer.forward(parameter, x)
 
         return x
+
 
     def train(self, input, target):
         assert len(input) == self.nodecounts[0]
         assert len(target) == self.nodecounts[-1]
 
-        weights = [
-            self._parameters[0],
-            self._parameters[2]
-        ]
-        outs = [None]*5
-        sigma = [None]*5
-        delta = [None]*5
+        # Forward propagation to get evaluated values in the net
+        values = [input] + [None]*len(self._layers)
+        for i in range(0,len(self._layers)):
+            values[i+1] = self._layers[i].forward(parameter=self._parameters[i],
+                                                    input=values[i])
 
-        outs[0] = input
-        outs[1] = weights[0].dot(outs[0])
-        outs[2] = scipy.special.expit(outs[1])      # expit is logistic func 1/(1+exp(-x))
-        outs[3] = weights[1].dot(outs[2])
-        outs[4] = scipy.special.expit(outs[3])      # expit is logistic func 1/(1+exp(-x))
+        # Back propagate the gradient chain
+        grads = [None]*len(self._layers)
+        chain = (values[-1] - target)
+        for i in range(len(self._layers)-1,-1,-1):
+            (chain, grads[i]) = self._layers[i].backward(parameter=self._parameters[i],
+                                                            chain=chain,
+                                                            output=values[i+1],
+                                                            input=values[i])
 
-        # layer 4: error
-        sigma[4] = (outs[4]-target)
-
-        # layer 3: activation
-        sigma[3] = sigma[4]*outs[4]*(1-outs[4])
-
-        # layer 2: sum
-        delta[2] = np.outer(sigma[3], outs[2])
-        sigma[2] = np.matmul(sigma[3], weights[1])
-
-        # layer 1: activation
-        sigma[1] = sigma[2]*outs[2]*(1-outs[2])
-
-        # layer 0: sum
-        delta[0] = np.outer(sigma[1], outs[0])
-        sigma[0] = np.matmul(sigma[1], weights[0])  # unused
-
-        #a = self.evaluate(input)-target         # before any adjustment
-        #weights[1] -= 0.1*delta[2]
-        #b = self.evaluate(input)-target         # after adjustment of last layer
-        #weights[0] -= 0.1*delta[0]
-        #c = self.evaluate(input)-target         # after adjustment of last layer
-        #print("%f -> %f -> %f" % (np.sum(a*a), np.sum(b*b), np.sum(c*c)))
-
-        if True:
-
-            # Forward propagation to get evaluated values in the net
-            values = [input] + [None]*len(self._layers)
-            for i in range(0,len(self._layers)):
-                values[i+1] = self._layers[i].forward(parameter=self._parameters[i],
-                                                      input=values[i])
-
-            # Back propagate the gradient chain
-            grads = [None]*len(self._layers)
-            chain = (values[-1] - target)
-            for i in range(len(self._layers)-1,-1,-1):
-                (chain, grads[i]) = self._layers[i].backward(parameter=self._parameters[i],
-                                                             chain=chain,
-                                                             output=values[i+1],
-                                                             input=values[i])
-
-            # Gradient step
-            assert(len(grads) == len(self._parameters))
-            for (parameter, grad) in zip(self._parameters, grads):
-                if parameter is not None:
-                    parameter -= 0.1*grad
+        # Gradient step
+        assert(len(grads) == len(self._parameters))
+        for (parameter, grad) in zip(self._parameters, grads):
+            if parameter is not None:
+                parameter -= 0.1*grad
 
 
 net = NeuralNet([784, 100, 10])
