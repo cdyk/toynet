@@ -6,115 +6,87 @@ import scipy.special
 import matplotlib.pyplot as plt
 import csv
 
+class DenseSum:
+    def __init__(self, outputs: int, inputs: int):
+        self._outputs = outputs
+        self._inputs = inputs
+
+    def forward(self, parameter, input):
+        return parameter.dot(input)
+
+    def backward(self, parameter, chain, output, input):
+        grad = np.outer(chain, input)
+        chain = np.matmul(chain, parameter)
+        return (chain, grad)
+
+    def initialParameter(self):
+        return (1.0/math.sqrt(self._outputs*self._inputs))*(0.98*np.random.rand(self._outputs, self._inputs) + 0.01)
+
+class LogisticFunc:
+    def __init__(self, outputs: int):
+        self._outputs = outputs
+    
+    def forward(self, parameter, input):
+        return scipy.special.expit(input)
+
+    def backward(self, parameter, chain, output, input):
+        grad = None
+        chain = chain*output*(1-output)
+        return (chain, grad)
+    
+    def initialParameter(self):
+        return None
+
+
 class NeuralNet:
 
     def __init__(self, nodecounts):
         self.nodecounts = nodecounts
-        self.weights = [None]*(len(self.nodecounts)-1)
 
+        self._layers = []
         for i in range(0, len(self.nodecounts)-1):
-            cols = self.nodecounts[i]
-            rows = self.nodecounts[i+1]
-            self.weights[i] = (1.0/math.sqrt(cols*rows))*(0.98*np.random.rand(rows, cols) + 0.01)
+            inputs = self.nodecounts[i]
+            outputs = self.nodecounts[i+1]
+            self._layers.append(DenseSum(outputs, inputs))
+            self._layers.append(LogisticFunc(outputs))
 
-            rowsums = np.sum(self.weights[i], axis=1)
+        self._parameters = [layer.initialParameter() for layer in self._layers]
 
-            print("weights %d %d rowsum avg=%s" % (rows, cols, np.average(rowsums)))
 
     def evaluate(self, input):
         assert len(input) == self.nodecounts[0]
+
         x = input
-        for weight in self.weights:
-            x = weight.dot(x)
-            x = scipy.special.expit(x)      # expit is logistic func 1/(1+exp(-x))
+        for (layer, parameter) in zip(self._layers, self._parameters):
+            x = layer.forward(parameter, x)
+
         return x
+
 
     def train(self, input, target):
         assert len(input) == self.nodecounts[0]
         assert len(target) == self.nodecounts[-1]
 
-        nets = []
-        outs = [input]
-        sigma = [None]*len(self.weights)
-        delta = [None]*len(self.weights)
+        # Forward propagation to get evaluated values in the net
+        values = [input] + [None]*len(self._layers)
+        for i in range(0,len(self._layers)):
+            values[i+1] = self._layers[i].forward(parameter=self._parameters[i],
+                                                    input=values[i])
 
-        for weight in self.weights:
-            nets.append(weight.dot(outs[-1]))
-            outs.append(scipy.special.expit(nets[-1]))      # expit is logistic func 1/(1+exp(-x))
+        # Back propagate the gradient chain
+        grads = [None]*len(self._layers)
+        chain = (values[-1] - target)
+        for i in range(len(self._layers)-1,-1,-1):
+            (chain, grads[i]) = self._layers[i].backward(parameter=self._parameters[i],
+                                                            chain=chain,
+                                                            output=values[i+1],
+                                                            input=values[i])
 
-        # Last layer:
-        #
-        #     dE;dw_ij = G(e;o_3) J(o_3;w_ij)
-        #              = G(e;o_3) J(o_3;s_2) J(s_2;w_ij)
-        #               +---- sigma --------+
-        #
-        #     G(E;o_3) = ( E;o_3_1 ... E;o_3_n3 )
-        #              = ( -(t_1 - o_3_1) .. -(t_m - o_3_n3) )    // 1 x n3 matrix
-        #     J(o_3;s_2) = I(o_3_1;s_2_1 ... o_3_1;s_2_n3)
-        #
-
-        # Calculate sigma for last layer
-        #
-        # G(E;o_3) J(o_3;s_2) = ( dE;do_3_1 do_3_1;ds_2_1 ... dE;do_3_n3 do_3_1;ds_2_n3)
-        #                     = ( (o_3_1 - t_1) phi'(s_2_1) ... (o_3_n3 - t_n3)*phi'(s_2_n3) )
-        #                     = ( (o_3_1 - t_1) o_3_1 (1 - o_3_1) ... (o_3_n3 - t_n3) o_3_n3 (1 - o_3_n3) )
-        #                     = sigma_2  1 x n3 matrix
-       
-        sigma[1] = (outs[2]-target)*outs[2]*(1-outs[2])
-
-        # J(s_2;w_ij) = n3 x n2 matrix element w_ij nonzero
-        # -> sigma_2 J(s_2;w_ij) = ( 0 ... sigma_3_j o_2_i ... 0)
-        #
-        #          +-                                         -+
-        #          | sigma_3_1 o_2_1   ...   sigma_3_n3 o_2_1  |
-        # delta =  |      ..                        ..         |
-        #          | sigma_3_1 o_2_n2  ...   sigma_3_n3 o_2_n2 |
-        #          +-                                         -+
-        delta[1] = np.outer(sigma[1], outs[1])
-
-        # calculate sigma 1 from sigma 2,
-        # dE;dw_ij = G(e;o_3) J(o_3;w_ij)
-        #          = G(e;o_3) J(o_3;s_2) J(s_2;w_ij)
-        #          = G(e;o_3) J(o_3;s_2) J(s_2;o_2) J(o_2;w_ij)
-        #          = G(e;o_3) J(o_3;s_2) J(s_2;o_2) J(o_2;s_1) J(s_1;w_ij)
-        #           +---- sigma_2 -----+
-        #           +----------- sigma_1 --------------------+
-        # sigma_1 = sigma_2 J(s_2;o_2) J(o_2;s_1)
-        #
-        # 
-
-        #   dE;dw_ij = G(e;o_3) J(o_3;s_2) J(s_2;o_2) J(o_2;s_1) J(s_1;w_ij)    <- use if w_ij in s_1
-        #             = sigma_2 J(s_2;o_2) J(o_2;s_1) J(s_1;w_ij)
-        #              +------- sigma_1 -------------+
-        #    sigma_1 = sigma_2 J(s_2;o_2) J(o_2;s_1)
-        #
-        #
-        #                 +-                                -+
-        #                 | ds_2_1;do_2_1 ... ds_2_1;do_2_n2 |   s_2_i = < ( w_i1 ... w_im), (o_2_1, ... o_2_m) >
-        #    J(s_2;o_2) = |      ...               ...       |
-        #                 | ds_2_m;do_2_1 ... ds_2_m;do_2_n2 |   ds_2_i;do_2_j = w_ij 
-        #                 +-                                -+
-        #                 +-              -+
-        #                 | w_11  ... w_1m |
-        #               = | ...       ...  | = W
-        #                 | w_n1  ... w_nm |
-        #                 +-              -+
-        #
-        #    J(o_2;s_1) = I( o_2_1;s_1_1 ... o_2_)
-
-        sigma[0] = np.matmul(sigma[1], self.weights[1])*outs[1]*(1-outs[1])
-        delta[0] = np.outer(sigma[0], outs[0])
-
-
-
-        #a = self.evaluate(input)-target         # before any adjustment
-        self.weights[1] -= 0.1*delta[1]
-        #b = self.evaluate(input)-target         # after adjustment of last layer
-        self.weights[0] -= 0.1*delta[0]
-        #c = self.evaluate(input)-target         # after adjustment of last layer
-
-        #print("%f -> %f -> %f" % (np.sum(a*a), np.sum(b*b), np.sum(c*c)))
-
+        # Gradient step
+        assert(len(grads) == len(self._parameters))
+        for (parameter, grad) in zip(self._parameters, grads):
+            if parameter is not None:
+                parameter -= 0.1*grad
 
 
 net = NeuralNet([784, 100, 10])
